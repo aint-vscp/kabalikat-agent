@@ -1,7 +1,18 @@
 {
   "name": "kabalikat-agent",
+  "version": "1.0.0",
+  "description": "An open-source personal safety and emergency response mobile application.",
   "private": true,
-  "version": "0.0.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aint-vscp/kabalikat-agent.git"
+  },
+  "author": "aint-vscp",
+  "bugs": {
+    "url": "https://github.com/aint-vscp/kabalikat-agent/issues"
+  },
+  "homepage": "https://github.com/aint-vscp/kabalikat-agent#readme",
   "type": "module",
   "scripts": {
     "dev": "vite",
