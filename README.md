@@ -43,13 +43,13 @@ It features **Hardware-Level Alerts** (Flashlight Strobe, Screen Wake, Native Al
 
 ### Download APK (Android)
 
-You can download the latest pre-built APK from the [Releases Page](https://github.com/yourusername/kabalikat-agent/releases) of this repository.
+You can download the latest pre-built APK from the [Releases Page](https://github.com/aint-vscp/kabalikat-agent/releases) of this repository.
 
 ### Build from Source
 
 1.  **Clone the repository**
     ```bash
-    git clone https://github.com/yourusername/kabalikat-agent.git
+    git clone https://github.com/aint-vscp/kabalikat-agent.git
     cd kabalikat-agent
     ```
 
