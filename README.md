@@ -1,6 +1,7 @@
 # Kabalikat Agent ("The Ally")
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+![Downloads](https://img.shields.io/github/downloads/aint-vscp/kabalikat-agent/total)
 ![Built With Capacitor](https://img.shields.io/badge/Built%20With-Capacitor-blue)
 ![Built With React](https://img.shields.io/badge/Built%20With-React-61DAFB)
 
