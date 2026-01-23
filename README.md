@@ -7,6 +7,20 @@
 
 > An autonomous personal agent providing total life management: Academic, Work, Organizations, and Personal well-being.
 
+## 💖 Support the Project
+
+If this project helped you, please consider buying me a coffee!
+
+<a href="https://github.com/sponsors/aint-vscp">
+  <img src="https://img.shields.io/badge/Sponsor-GitHub-ea4aaa?style=for-the-badge&logo=github" alt="Sponsor on GitHub" />
+</a>
+<a href="https://ko-fi.com/vscpdev">
+  <img src="https://img.shields.io/badge/Support-Ko--fi-F16061?style=for-the-badge&logo=ko-fi&logoColor=white" alt="Support on Ko-fi" />
+</a>
+<a href="https://paypal.me/vscpdev">
+  <img src="https://img.shields.io/badge/Donate-PayPal-00457C?style=for-the-badge&logo=paypal&logoColor=white" alt="Donate via PayPal" />
+</a>
+
 Kabalikat (Tagalog for "Ally") is a hybrid AI agent built with **React**, **Capacitor**, and **Generative AI**. It is designed to act as a proactive "Background Sentry" that monitors your life streams (Email, Calendar) and a "Companion" that you can talk to.
 
 It features **Hardware-Level Alerts** (Flashlight Strobe, Screen Wake, Native Alarm) for critical deadlines and conflicts, ensuring you never miss what matters even if your phone is silent.
