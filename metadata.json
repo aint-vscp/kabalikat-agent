@@ -1,0 +1,8 @@
+{
+  "name": "Kabalikat Agent",
+  "description": "An autonomous personal agent that manages personal things, schedules, and digital well-being through Background Sentry and Active Companion modes.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
