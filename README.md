@@ -6,7 +6,7 @@
 
 > An autonomous personal agent providing total life management: Academic, Work, Organizations, and Personal well-being.
 
-Kabalikat (Tagalog for "Ally") is a hybrid AI agent built with **React**, **Capacitor**, and **Google Gemini 2.0**. It is designed to act as a proactive "Background Sentry" that monitors your life streams (Email, Calendar) and a "Companion" that you can talk to.
+Kabalikat (Tagalog for "Ally") is a hybrid AI agent built with **React**, **Capacitor**, and **Generative AI**. It is designed to act as a proactive "Background Sentry" that monitors your life streams (Email, Calendar) and a "Companion" that you can talk to.
 
 It features **Hardware-Level Alerts** (Flashlight Strobe, Screen Wake, Native Alarm) for critical deadlines and conflicts, ensuring you never miss what matters even if your phone is silent.
 
@@ -27,7 +27,7 @@ It features **Hardware-Level Alerts** (Flashlight Strobe, Screen Wake, Native Al
 
 *   **Framework**: React 19 + Vite
 *   **Native Runtime**: Capacitor 8 (Android)
-*   **AI Core**: Google Gemini 2.0 Flash (via Google AI SDK)
+*   **AI Core**: Pluggable AI Architecture (Supports Google Gemini, etc.)
 *   **Styling**: TailwindCSS
 *   **Icons**: Lucide React
 *   **Storage**: LocalStorage + FileSystem (Hybrid)
@@ -36,7 +36,7 @@ It features **Hardware-Level Alerts** (Flashlight Strobe, Screen Wake, Native Al
 
 *   Node.js (v18 or higher)
 *   Android Studio (for building the APK)
-*   A Google Gemini API Key
+*   An AI Provider API Key (e.g., Google Gemini)
 
 ## Installation
 
