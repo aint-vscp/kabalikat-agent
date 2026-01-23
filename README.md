@@ -1,5 +1,9 @@
 # Kabalikat Agent ("The Ally")
 
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+![Built With Capacitor](https://img.shields.io/badge/Built%20With-Capacitor-blue)
+![Built With React](https://img.shields.io/badge/Built%20With-React-61DAFB)
+
 > An autonomous personal agent providing total life management: Academic, Work, Organizations, and Personal well-being.
 
 Kabalikat (Tagalog for "Ally") is a hybrid AI agent built with **React**, **Capacitor**, and **Google Gemini 2.0**. It is designed to act as a proactive "Background Sentry" that monitors your life streams (Email, Calendar) and a "Companion" that you can talk to.

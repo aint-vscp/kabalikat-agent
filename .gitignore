@@ -42,6 +42,13 @@ android/.idea/libraries
 android/.idea/caches
 android/.idea/runConfigurations.xml
 
+# Security
+keystore.properties
+*.jks
+*.keystore
+google-services.json
+
+
 # Capacitor - iOS
 ios/App/App/public
 ios/App/Podfile.lock

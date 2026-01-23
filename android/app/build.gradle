@@ -24,10 +24,21 @@ android {
             keyPassword "android"
         }
         release {
-            storeFile file("${System.properties['user.home']}/.android/debug.keystore")
-            storePassword "android"
-            keyAlias "androiddebugkey"
-            keyPassword "android"
+            def keystoreFile = file('keystore.properties')
+            if (keystoreFile.exists()) {
+                def props = new Properties()
+                props.load(new FileInputStream(keystoreFile))
+                storeFile file(props['storeFile'])
+                storePassword props['storePassword']
+                keyAlias props['keyAlias']
+                keyPassword props['keyPassword']
+            } else {
+                // Fallback to debug keystore for development builds if no release key is present
+                storeFile file("${System.properties['user.home']}/.android/debug.keystore")
+                storePassword "android"
+                keyAlias "androiddebugkey"
+                keyPassword "android"
+            }
         }
     }
     buildTypes {
