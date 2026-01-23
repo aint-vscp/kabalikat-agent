@@ -14,16 +14,16 @@ It features **Hardware-Level Alerts** (Flashlight Strobe, Screen Wake, Native Al
   <img src="public/Kabalikat.svg" width="100" />
 </div>
 
-## 🚀 Features
+## Features
 
-*   **🛡️ Background Sentry Mode**: Autonomously analyzes emails and schedule conflicts.
-*   **🚨 Tier 1 Hardware Alerts**: Triggers real physical alarms (Flashlight Strobe + Siren + Screen Wake) for critical events.
-*   **🧠 Total Recall Memory**: Remembers your preferences, routines, and identity using the TOON memory format.
-*   **👁️ Vision Sentry**: Uses AI Vision to scan and extract schedules from photos of documents or whiteboards.
-*   **📅 Intelligent Calendar**: Auto-schedules events and detects conflicts between Work, School, and Org commitments.
-*   **🔌 Plugin Architecture**: Built on Capacitor to access Native Android features (AlarmManager, Flashlight, Notifications).
+*   **Background Sentry Mode**: Autonomously analyzes emails and schedule conflicts.
+*   **Tier 1 Hardware Alerts**: Triggers real physical alarms (Flashlight Strobe + Siren + Screen Wake) for critical events.
+*   **Total Recall Memory**: Remembers your preferences, routines, and identity using the TOON memory format.
+*   **Vision Sentry**: Uses AI Vision to scan and extract schedules from photos of documents or whiteboards.
+*   **Intelligent Calendar**: Auto-schedules events and detects conflicts between Work, School, and Org commitments.
+*   **Plugin Architecture**: Built on Capacitor to access Native Android features (AlarmManager, Flashlight, Notifications).
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 *   **Framework**: React 19 + Vite
 *   **Native Runtime**: Capacitor 8 (Android)
@@ -32,19 +32,19 @@ It features **Hardware-Level Alerts** (Flashlight Strobe, Screen Wake, Native Al
 *   **Icons**: Lucide React
 *   **Storage**: LocalStorage + FileSystem (Hybrid)
 
-## ⚡ Prerequisites
+## Prerequisites
 
 *   Node.js (v18 or higher)
 *   Android Studio (for building the APK)
 *   A Google Gemini API Key
 
-## 📦 Installation
+## Installation
 
-### 📲 Download APK (Android)
+### Download APK (Android)
 
 You can download the latest pre-built APK from the [Releases Page](https://github.com/yourusername/kabalikat-agent/releases) of this repository.
 
-### 🏗️ Build from Source
+### Build from Source
 
 1.  **Clone the repository**
     ```bash
@@ -69,7 +69,7 @@ You can download the latest pre-built APK from the [Releases Page](https://githu
     npx cap sync android
     ```
 
-## 📱 Running on Device
+## Running on Device
 
 To test the **Hardware Alerts** and **Native Alarm** features, you must run this on a physical Android device or Emulator.
 
@@ -77,11 +77,11 @@ To test the **Hardware Alerts** and **Native Alarm** features, you must run this
     ```bash
     npx cap open android
     ```
-2.  Wait for Gradle to sync, then press the **Run** (▶️) button.
+2.  Wait for Gradle to sync, then press the **Run** button.
 
 *(Note: Web-only features work directly with `npm run dev`, but native alarms will fallback to console logs.)*
 
-## 🔑 OAuth Configuration (For Google Sign-In)
+## OAuth Configuration (For Google Sign-In)
 
 If you are using the Google Classroom or Gmail integration features, you need to configure your Google Cloud Console:
 
@@ -89,7 +89,7 @@ If you are using the Google Classroom or Gmail integration features, you need to
 2.  Add `https://localhost` to **Authorized Redirect URIs**.
 3.  Add the Client ID and Secret in the App Settings inside the application.
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
@@ -99,6 +99,6 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 4.  Push to the Branch (`git push origin feature/AmazingFeature`)
 5.  Open a Pull Request
 
-## 📄 License
+## License
 
 Distributed under the MIT License. See `LICENSE` for more information.
