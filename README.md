@@ -27,7 +27,7 @@ It features **Hardware-Level Alerts** (Flashlight Strobe, Screen Wake, Native Al
 
 *   **Framework**: React 19 + Vite
 *   **Native Runtime**: Capacitor 8 (Android)
-*   **AI Core**: Pluggable AI Architecture (Supports Google Gemini, etc.)
+*   **AI Core**: Pluggable AI Architecture (Supports Azure Open AI, Google Gemini etc.)
 *   **Styling**: TailwindCSS
 *   **Icons**: Lucide React
 *   **Storage**: LocalStorage + FileSystem (Hybrid)
@@ -36,7 +36,7 @@ It features **Hardware-Level Alerts** (Flashlight Strobe, Screen Wake, Native Al
 
 *   Node.js (v18 or higher)
 *   Android Studio (for building the APK)
-*   An AI Provider API Key (e.g., Google Gemini)
+*   An AI Provider API Key (e.g., Azure Open AI, Google Gemini)
 
 ## Installation
 
@@ -57,13 +57,7 @@ You can download the latest pre-built APK from the [Releases Page](https://githu
     npm install
     ```
 
-3.  **Environment Setup**
-    Create a `.env.local` file in the root directory:
-    ```bash
-    GEMINI_API_KEY=your_gemini_api_key_here
-    ```
-
-4.  **Sync Native Project**
+3.  **Sync Native Project**
     ```bash
     npm run build
     npx cap sync android
