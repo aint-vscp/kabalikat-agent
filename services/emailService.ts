@@ -1,12 +1,5 @@
-// This service handles email connection and processing.
-// NOTE: In a pure browser environment (Vite/React), direct IMAP (TCP) is not possible.
-// This service simulates the connection or would connect to a backend proxy if available.
-// "Not just Google but also Outlook" - handled by generic IMAP config or API wrappers.
-
 import { EmailAccount } from "../types";
-
 export type EmailProvider = 'gmail' | 'outlook';
-
 export class EmailService {
   
   // Simulated "Check Inbox" - In a real app with backend, this would fetch from /api/emails

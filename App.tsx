@@ -52,6 +52,9 @@ import { App as CapApp } from '@capacitor/app';
 import { CapacitorFlash } from '@capgo/capacitor-flash';
 import { KeepAwake } from '@capacitor-community/keep-awake';
 import { CapgoAlarm as Alarm } from '@capgo/capacitor-alarm';
+import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
+import { ClassroomService } from './services/classroomService';
+import { encode, decode } from '@toon-format/toon';
 
 const emailService = new EmailService();
 const memoryService = new MemoryService();
@@ -78,31 +81,11 @@ const OPENROUTER_MODELS = [
 export default function App() {
   const [mode, setMode] = useState<AppMode>(AppMode.DASHBOARD);
   
-  // Default is light
-  const [theme, setTheme] = useState<Theme>(() => {
-    const saved = localStorage.getItem('kabalikat_theme');
-    return (saved as Theme) || 'light';
-  });
+  // Default is light (Loaded in useEffect)
+  const [theme, setTheme] = useState<Theme>('light');
 
-  const [calendar, setCalendar] = useState<LifeEvent[]>(() => {
-    try {
-      const saved = localStorage.getItem('kabalikat_calendar');
-      if (!saved) return [];
-      const parsed = JSON.parse(saved);
-      // Clean duplicates on load
-      const uniqueEvents: LifeEvent[] = [];
-      const seen = new Set<string>();
-      
-      parsed.forEach((e: LifeEvent) => {
-          const key = `${e.title}|${new Date(e.start_time).toISOString()}`;
-          if (!seen.has(key)) {
-            seen.add(key);
-            uniqueEvents.push(e);
-          }
-      });
-      return uniqueEvents;
-    } catch { return []; }
-  });
+  // Loaded from Filesystem
+  const [calendar, setCalendar] = useState<LifeEvent[]>([]);
 
   const [logs, setLogs] = useState<SentryLog[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -118,12 +101,86 @@ export default function App() {
   // Deduplication state for Sentry signals
   const [processedSignals, setProcessedSignals] = useState<Set<string>>(new Set());
 
-  // --- PLUGIN INIT ---
+  // Advanced Settings State
+  const [emailAccounts, setEmailAccounts] = useState<EmailAccount[]>(
+    [{ id: '1', email: '', appPassword: '', server: 'imap.gmail.com' }]
+  );
+
+  const [aiKeys, setAiKeys] = useState<AIKeys>(
+    { provider: 'google', google: '', openai: '', openrouter: '', azure: '' }
+  );
+
+  const [azureOCR, setAzureOCR] = useState<AzureOCRConfig>(
+    { endpoint: '', key: '', enabled: false }
+  );
+
+  const [isVaultSaved, setIsVaultSaved] = useState(false);
+  const [setupCompleted, setSetupCompleted] = useState(false);
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
+
+  // --- PLUGIN INIT & PERSISTENCE LOAD ---
   useEffect(() => {
-    const initPlugins = async () => {
+    const initApp = async () => {
+      // 1. Initialize Memory Service (Async)
+      await memoryService.init();
+
+      // 2. Load Persisted State from Filesystem
+      const loadData = async (filename: string, setter: (val: any) => void) => {
+        try {
+          // Use Directory.Data for reliable internal storage on Android
+          const ret = await Filesystem.readFile({ path: filename, directory: Directory.Data, encoding: Encoding.UTF8 });
+          if (ret.data) {
+             const decoded = decode(ret.data as string);
+             setter(decoded);
+          }
+        } catch (e) { /* File likely doesn't exist yet, use default */ }
+      };
+
+      await Promise.all([
+        loadData('kabalikat_theme.toon', setTheme),
+        loadData('kabalikat_calendar.toon', (data: LifeEvent[]) => {
+           // Basic dedupe on load
+           const seen = new Set<string>();
+           if (Array.isArray(data)) {
+             const unique = data.filter(e => {
+               const key = `${e.title}|${e.start_time}`;
+               if(seen.has(key)) return false;
+               seen.add(key);
+               return true;
+             });
+             setCalendar(unique);
+           }
+        }),
+        loadData('kabalikat_emails.toon', setEmailAccounts),
+        loadData('kabalikat_ai_keys.toon', setAiKeys),
+        loadData('kabalikat_azure_ocr.toon', setAzureOCR),
+        loadData('kabalikat_setup.toon', setSetupCompleted),
+      ]);
+      
+      setIsDataLoaded(true);
+
       if (Capacitor.isNativePlatform()) {
         try {
+          // Request alarm permissions first
+          try {
+            const alarmPermResult = await Alarm.requestPermissions({ exactAlarm: true });
+            console.log('Alarm permissions:', alarmPermResult);
+          } catch (e) {
+            console.log('Alarm permission request not supported or failed:', e);
+          }
+
           await LocalNotifications.requestPermissions();
+          
+          // Check exact alarm settings
+          try {
+            const exactAlarmStatus = await LocalNotifications.checkExactNotificationSetting();
+            if (exactAlarmStatus.exact_alarm !== 'granted') {
+              await LocalNotifications.changeExactNotificationSetting();
+            }
+          } catch (e) {
+            console.log('Exact alarm setting check failed:', e);
+          }
+
           // Create channels for different urgency
           await LocalNotifications.createChannel({
             id: 'critical_alerts',
@@ -161,17 +218,71 @@ export default function App() {
         }
       }
     };
-    initPlugins();
+    initApp();
   }, []);
 
-  // Persistence
-  useEffect(() => {
-    localStorage.setItem('kabalikat_theme', theme);
-  }, [theme]);
+  // Persistence (Filesystem)
+  const saveToon = async (filename: string, data: any) => {
+    try {
+      await Filesystem.writeFile({
+         path: filename,
+         data: encode(data),
+         directory: Directory.Data,
+         encoding: Encoding.UTF8
+      });
+    } catch (e) { 
+      console.error("Save failed", e);
+      // Optional: Add a visible log for debugging specific save failures
+      // addLog(UrgencyTier.TIER3, "SAVE_ERROR", `Failed to save ${filename}`);
+    }
+  };
 
   useEffect(() => {
-    localStorage.setItem('kabalikat_calendar', JSON.stringify(calendar));
-  }, [calendar]);
+    if (!isDataLoaded) return;
+    saveToon('kabalikat_theme.toon', theme);
+  }, [theme, isDataLoaded]);
+
+  useEffect(() => {
+    if (!isDataLoaded) return;
+    saveToon('kabalikat_calendar.toon', calendar);
+  }, [calendar, isDataLoaded]);
+
+  useEffect(() => {
+    if (!isDataLoaded) return;
+    saveToon('kabalikat_emails.toon', emailAccounts);
+  }, [emailAccounts, isDataLoaded]);
+
+  useEffect(() => {
+    if (!isDataLoaded) return;
+    saveToon('kabalikat_ai_keys.toon', aiKeys);
+  }, [aiKeys, isDataLoaded]);
+
+  useEffect(() => {
+    if (!isDataLoaded) return;
+    saveToon('kabalikat_azure_ocr.toon', azureOCR);
+  }, [azureOCR, isDataLoaded]);
+
+  useEffect(() => {
+     // Only save if true to avoid overwriting with initial false before load
+     if (setupCompleted && isDataLoaded) {
+        saveToon('kabalikat_setup.toon', true);
+     }
+  }, [setupCompleted, isDataLoaded]);
+
+  // Sentry Mode - Keep Awake & Persistent Background
+  useEffect(() => {
+    const manageWakeLock = async () => {
+       if (Capacitor.isNativePlatform()) {
+          const canKeepAwake = mode === AppMode.SENTRY || mode === AppMode.COMPANION;
+          if (canKeepAwake) {
+             await KeepAwake.keepAwake();
+          } else {
+             await KeepAwake.allowSleep();
+          }
+       }
+    };
+    manageWakeLock();
+  }, [mode]);
 
   // System Theme Listener
   const [systemIsDark, setSystemIsDark] = useState(window.matchMedia('(prefers-color-scheme: dark)').matches);
@@ -219,11 +330,9 @@ export default function App() {
             osc.connect(gain);
             gain.connect(audioCtx.destination);
             
-            // Alarm siren effect (Looping)
             osc.type = 'square';
             const now = audioCtx.currentTime;
             
-            // Create a loop of varying frequency
             const loop = () => {
                  if (audioCtx?.state === 'closed') return;
                  const t = audioCtx!.currentTime;
@@ -232,22 +341,18 @@ export default function App() {
                  osc.frequency.linearRampToValueAtTime(880, t + 1.0);
             };
             
-            // Repeat the ramp every second? 
-            // Web Audio scheduling is precise. We can just schedule a long sequence or use LFO
-            // Simple LFO for siren
             const lfo = audioCtx.createOscillator();
             lfo.type = 'sine';
-            lfo.frequency.value = 2; // 2Hz siren
+            lfo.frequency.value = 2;
             const lfoGain = audioCtx.createGain();
-            lfoGain.gain.value = 400; // Depth of modulation
+            lfoGain.gain.value = 400;
             lfo.connect(lfoGain);
             lfoGain.connect(osc.frequency);
-            osc.frequency.value = 600; // Base frequency
+            osc.frequency.value = 600;
 
             lfo.start();
             osc.start();
             
-            // Set global volume high
             gain.gain.setValueAtTime(1.0, now);
           }
         } catch (e) {
@@ -261,7 +366,6 @@ export default function App() {
     }
 
     return () => {
-      // Cleanup
       if (audioCtx && audioCtx.state !== 'closed') audioCtx.close();
       if (strobeInterval) clearInterval(strobeInterval);
       if (Capacitor.isNativePlatform()) {
@@ -278,16 +382,111 @@ export default function App() {
 
   const [alertedEvents, setAlertedEvents] = useState<Set<string>>(new Set());
 
-  // --- RECURRING TASKS LOADER (Extracted for re-use) ---
+  const addLog = useCallback((tier: UrgencyTier, action: string, reason: string) => {
+    const newLog: SentryLog = {
+      id: Math.random().toString(36).substr(2, 9),
+      timestamp: new Date().toLocaleTimeString(),
+      tier,
+      action,
+      reason
+    };
+    setLogs(prev => [newLog, ...prev]);
+  }, []);
+
+  const toggleTorch = async (enable: boolean) => {
+    try {
+       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+       const track = stream.getVideoTracks()[0];
+       const caps = track.getCapabilities() as any;
+       if (caps.torch) {
+          await track.applyConstraints({ advanced: [{ torch: enable } as any] });
+          if (enable) {
+             setTimeout(() => {
+                track.applyConstraints({ advanced: [{ torch: false } as any] });
+                track.stop();
+             }, 10000);
+          } else {
+             track.stop();
+          }
+       }
+    } catch (e) {
+       console.error("Torch error", e);
+    }
+  };
+  
+  const scheduleReminders = useCallback(async (event: LifeEvent) => {
+    if (!event.start_time) return;
+    const eventTime = new Date(event.start_time).getTime();
+    const now = Date.now();
+    
+    // 1. Native System Alarm via @capgo/capacitor-alarm (Guarantees wake up even when app killed)
+    if (Capacitor.isNativePlatform() && eventTime > now) {
+       try {
+          const alarmDate = new Date(eventTime);
+          // Only set alarm if it's within the next 24 hours
+          if (eventTime - now < 24 * 60 * 60 * 1000) { 
+             const result = await Alarm.createAlarm({
+                hour: alarmDate.getHours(),
+                minute: alarmDate.getMinutes(),
+                label: `Kabalikat: ${event.title}`,
+                vibrate: true,
+                skipUi: true
+             });
+             if (result.success) {
+               addLog(UrgencyTier.TIER2, 'ALARM_SYNC', `System alarm set for ${event.title} at ${alarmDate.toLocaleTimeString()}`);
+             } else {
+               console.log('Alarm create returned:', result.message);
+             }
+          }
+       } catch (e: any) {
+          console.error("System Alarm Set Failed", e);
+          addLog(UrgencyTier.TIER3, 'ALARM_FALLBACK', `Using notification fallback for: ${event.title}`);
+       }
+    }
+
+    // 2. Local Notifications (Reminders leading up to event - works even when app killed)
+    const offsets = [
+        { label: '2 hours', ms: 2 * 60 * 60 * 1000 },
+        { label: '1 hour', ms: 1 * 60 * 60 * 1000 },
+        { label: '30 minutes', ms: 30 * 60 * 1000 },
+        { label: 'CRITICAL (5m)', ms: 5 * 60 * 1000 },
+        { label: 'NOW', ms: 0 }
+    ];
+
+    const notifications = [];
+
+    for (const offset of offsets) {
+        const triggerAt = eventTime - offset.ms;
+        if (triggerAt > now + 1000) {
+            notifications.push({
+                title: offset.label === 'NOW' ? `🚨 ${event.title} STARTED!` : `Reminder: ${event.title}`,
+                body: offset.label === 'NOW' ? "It's time!" : `Due in ${offset.label}.`,
+                id: Math.floor(Math.random() * 1000000),
+                schedule: { at: new Date(triggerAt), allowWhileIdle: true },
+                channelId: (offset.label.includes('CRITICAL') || offset.label === 'NOW') ? 'critical_alerts' : 'reminders',
+                extra: { eventId: event.id, type: offset.label === 'NOW' ? 'alarm' : 'reminder', reason: event.title },
+                ongoing: offset.label === 'NOW'
+            });
+        }
+    }
+
+    if (notifications.length > 0 && Capacitor.isNativePlatform()) {
+        try {
+           await LocalNotifications.schedule({ notifications });
+        } catch (e) {
+           console.error("Failed to schedule notifications", e);
+        }
+    }
+  }, [addLog]);
+
   const refreshRecurringEvents = useCallback(() => {
-    // Load daily routines into today's view
     const mem = memoryService.getMemory();
-    const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const todayStr = new Date().toISOString().split('T')[0];
     
     if (mem.recurring_tasks && mem.recurring_tasks.length > 0) {
       setCalendar(prev => {
         const existingIds = new Set(prev.map(e => e.id));
-        const handledRecurrences = new Set(JSON.parse(localStorage.getItem('kabalikat_handled_recurrences') || '[]'));
+        const handledRecurrences = new Set(mem.handled_recurrence_ids || []);
         const newEvents: LifeEvent[] = [];
 
         mem.recurring_tasks.forEach(task => {
@@ -295,15 +494,10 @@ export default function App() {
              // Create an event for Today
              const derivedId = `recur_${task.id}_${todayStr}`;
              
-             // Only add if it doesn't exist AND hasn't been explicitly handled/dismissed
              if (!existingIds.has(derivedId) && !handledRecurrences.has(derivedId)) {
-                // If task has specific time, use it. Default to 8 AM.
-                // AI usually gives "HH:MM PM", parse it roughly or expect HH:MM
-                // For robustness, let's assume the memory service/AI normalizes it, or we allow "7:15 PM" parsing here
                 let hour = 8; 
                 let min = 0;
                 
-                // Simple parser for "7:15 PM" or "19:15"
                 const t = task.time || "08:00";
                 const isPM = t.toLowerCase().includes('pm');
                 const timeParts = t.replace(/[a-zA-Z\s]/g, '').split(':');
@@ -318,7 +512,7 @@ export default function App() {
                 const startT = `${todayStr}T${pad(hour)}:${pad(min)}:00`;
                 const endT = `${todayStr}T${pad(hour+1)}:${pad(min)}:00`;
 
-                newEvents.push({
+                const recurringEvent: LifeEvent = {
                   id: derivedId,
                   title: task.title,
                   start_time: startT,
@@ -326,7 +520,11 @@ export default function App() {
                   category: (task.category as EventCategory) || 'Personal',
                   source: 'manual', 
                   completed: false
-                });
+                };
+
+                newEvents.push(recurringEvent);
+                // Immediately schedule reminders/alarms for this new instance
+                scheduleReminders(recurringEvent);
              }
            }
         });
@@ -334,7 +532,7 @@ export default function App() {
         return [...prev, ...newEvents];
       });
     }
-  }, []);
+  }, [scheduleReminders]);
 
   const handleDismissAlert = () => {
     if (!activeAlert) return;
@@ -362,11 +560,7 @@ export default function App() {
            };
 
            // PERSISTENCE: Mark this specific recurrence ID as handled effectively (so it doesn't regenerate on reload)
-           const handled = JSON.parse(localStorage.getItem('kabalikat_handled_recurrences') || '[]');
-           if (!handled.includes(eventId)) {
-              handled.push(eventId);
-              localStorage.setItem('kabalikat_handled_recurrences', JSON.stringify(handled));
-           }
+           memoryService.markRecurrenceAsHandled(eventId);
 
            return [...prev.filter(e => e.id !== eventId), nextEvent];
         });
@@ -376,6 +570,57 @@ export default function App() {
   useEffect(() => {
      refreshRecurringEvents();
   }, [refreshRecurringEvents]); 
+
+  // --- CLASSROOM SYNC ---
+  useEffect(() => {
+    const syncClassroom = async () => {
+      if (!aiKeys.googleClientId || !aiKeys.googleClientSecret || !aiKeys.classroomRefreshToken) return;
+
+      const classroomService = new ClassroomService(
+        aiKeys.googleClientId,
+        aiKeys.googleClientSecret,
+        aiKeys.classroomRefreshToken
+      );
+
+      try {
+        const events = await classroomService.fetchAllAssignments();
+        if (events.length > 0) {
+          setCalendar(prev => {
+            const existingIds = new Set(prev.map(e => e.id));
+            const newEvents = events.filter(e => !existingIds.has(e.id));
+            if (newEvents.length === 0) return prev;
+            
+            const updated = [...prev, ...newEvents];
+            
+            // Notify for new assignments
+            if (Capacitor.isNativePlatform()) {
+               LocalNotifications.schedule({
+                 notifications: [{
+                   title: 'New Classwork Detected',
+                   body: `Added ${newEvents.length} new assignments to your calendar.`,
+                   id: Math.floor(Math.random() * 100000),
+                   schedule: { at: new Date(Date.now() + 1000) }
+                 }]
+               });
+            }
+            
+            addLog(UrgencyTier.TIER2, 'CLASSROOM', `Synced ${newEvents.length} new assignments.`);
+            return updated;
+          });
+        }
+      } catch (e) {
+        console.error("Classroom Sync Failed", e);
+        addLog(UrgencyTier.TIER3, 'ERROR', 'Failed to sync Google Classroom.');
+      }
+    };
+
+    // Sync on mount if keys exist
+    syncClassroom();
+
+    // Periodic Background Sync (Every 30 mins)
+    const interval = setInterval(syncClassroom, 30 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [aiKeys]);
 
   // --- ALARM MONITOR ---
   useEffect(() => {
@@ -408,29 +653,9 @@ export default function App() {
     return () => clearInterval(interval);
   }, [calendar, activeAlert, alertedEvents]);
 
-  // Advanced Settings State
-  const [emailAccounts, setEmailAccounts] = useState<EmailAccount[]>(() => {
-    const saved = localStorage.getItem('kabalikat_emails');
-    return saved ? JSON.parse(saved) : [{ id: '1', email: '', appPassword: '', server: 'imap.gmail.com' }];
-  });
 
-  const [aiKeys, setAiKeys] = useState<AIKeys>(() => {
-    const saved = localStorage.getItem('kabalikat_ai_keys');
-    return saved ? JSON.parse(saved) : { provider: 'google', google: '', openai: '', openrouter: '', azure: '' };
-  });
 
-  const [azureOCR, setAzureOCR] = useState<AzureOCRConfig>(() => {
-    const saved = localStorage.getItem('kabalikat_azure_ocr');
-    return saved ? JSON.parse(saved) : { endpoint: '', key: '', enabled: false };
-  });
 
-  const [isVaultSaved, setIsVaultSaved] = useState(false);
-
-  useEffect(() => {
-    localStorage.setItem('kabalikat_emails', JSON.stringify(emailAccounts));
-    localStorage.setItem('kabalikat_ai_keys', JSON.stringify(aiKeys));
-    localStorage.setItem('kabalikat_azure_ocr', JSON.stringify(azureOCR));
-  }, [emailAccounts, aiKeys, azureOCR]);
 
   const systemWarnings = useMemo(() => {
     const warns: { id: string, msg: string, type: 'critical' | 'warning' }[] = [];
@@ -504,7 +729,6 @@ export default function App() {
              if (data.refresh_token) {
                  const newKeys = { ...aiKeys, classroomRefreshToken: data.refresh_token };
                  setAiKeys(newKeys);
-                 localStorage.setItem('kabalikat_ai_keys', JSON.stringify(newKeys));
                  addLog(UrgencyTier.TIER1, 'AUTH SUCCESS', 'Classroom Refresh Token secured in Vault!');
                  // Clear URL
                  window.history.replaceState({}, document.title, "/");
@@ -535,76 +759,33 @@ export default function App() {
     });
   };
 
-  const addLog = useCallback((tier: UrgencyTier, action: string, reason: string) => {
-    const newLog: SentryLog = {
-      id: Math.random().toString(36).substr(2, 9),
-      timestamp: new Date().toLocaleTimeString(),
-      tier,
-      action,
-      reason
-    };
-    setLogs(prev => [newLog, ...prev]);
-  }, []);
 
-  const toggleTorch = async (enable: boolean) => {
-    try {
-       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-       const track = stream.getVideoTracks()[0];
-       const caps = track.getCapabilities() as any;
-       if (caps.torch) {
-          await track.applyConstraints({ advanced: [{ torch: enable } as any] });
-          if (enable) {
-             // Keep it on for 10s then stop
-             setTimeout(() => {
-                track.applyConstraints({ advanced: [{ torch: false } as any] });
-                track.stop();
-             }, 10000);
-          } else {
-             track.stop();
-          }
-       }
-    } catch (e) {
-       console.error("Torch error", e);
-    }
-  };
-  
-  const scheduleReminders = useCallback(async (event: LifeEvent) => {
-    if (!event.start_time) return;
-    const eventTime = new Date(event.start_time).getTime();
-    const now = Date.now();
-    
-    // Calculate offsets: 2h, 1h, 30m, 5m
-    const offsets = [
-        { label: '2 hours', ms: 2 * 60 * 60 * 1000 },
-        { label: '1 hour', ms: 1 * 60 * 60 * 1000 },
-        { label: '30 minutes', ms: 30 * 60 * 1000 },
-        { label: 'CRITICAL (5m)', ms: 5 * 60 * 1000 }
-    ];
-
-    const notifications = [];
-
-    for (const offset of offsets) {
-        const triggerAt = eventTime - offset.ms;
-        if (triggerAt > now) {
-            notifications.push({
-                title: offset.label.includes('CRITICAL') ? `🚨 ${event.title} in 5 mins!` : `Reminder: ${event.title}`,
-                body: `Due in ${offset.label}.`,
-                id: Math.floor(Math.random() * 1000000),
-                schedule: { at: new Date(triggerAt) },
-                channelId: offset.label.includes('CRITICAL') ? 'critical_alerts' : 'reminders',
-                extra: { eventId: event.id }
-            });
+  // Sync Alarms whenever Calendar Changes (Debounced ideally, but here direct)
+  useEffect(() => {
+     if (!isDataLoaded) return;
+     // Re-schedule alarms for all future events in the calendar
+     // Note: This is a bit heavy as it might duplicate alarms if we don't clear old ones. 
+     // But Alarm.createAlarm adds a new one. Logic should be smarter.
+     // For now, let's only run this when a NEW event is added via the AI tools (which calls scheduleReminders).
+     // However, for RECURRING events that are auto-generated on load, we need to schedule them.
+     
+     const now = Date.now();
+     calendar.forEach(e => {
+        // Only schedule if it looks like it hasn't been handled or is today
+        // Simple heuristic: If it's today and in future, ensure it has coverage.
+        const eTime = new Date(e.start_time).getTime();
+        if (eTime > now && eTime - now < 24 * 60 * 60 * 1000) {
+             // We can't easily check if an alarm already exists externally.
+             // Rely on the fact that 'refreshRecurringEvents' adds new objects.
+             // We can use a 'scheduled' flag in the event object if we wanted to be pure.
+             // But since we can't edit the event object easily here without causing loops...
+             
+             // COMPROMISE: We will trust 'scheduleReminders' is called when events are CREATED.
+             // Checking 'refreshRecurringEvents' -> it creates events. I should add scheduleReminders call THERE.
         }
-    }
+     });
 
-    if (notifications.length > 0 && Capacitor.isNativePlatform()) {
-        try {
-           await LocalNotifications.schedule({ notifications });
-        } catch (e) {
-           console.error("Failed to schedule notifications", e);
-        }
-    }
-  }, []);
+  }, [calendar, isDataLoaded]);
 
   const handleToolCalls = useCallback(async (response: GenerateContentResponse) => {
     // Robustly extract function calls from various SDK response formats
@@ -634,38 +815,58 @@ export default function App() {
         setTimeout(() => setActiveAlert(null), 10000);
 
       } else if (call.name === 'set_alarm') {
-          // Instant Alarm
+          // Instant Alarm using @capgo/capacitor-alarm
           const timeStr = cleanArgs.time;
           const label = cleanArgs.label || "Alarm";
           
           let scheduleTime = new Date(timeStr);
+          
           if (Capacitor.isNativePlatform()) {
-             // Use dedicated Alarm plugin for native clock behavior
+             // Use dedicated Alarm plugin for native clock behavior (works when app killed)
              try {
-                await Alarm.createAlarm({
+                const result = await Alarm.createAlarm({
                   hour: scheduleTime.getHours(),
                   minute: scheduleTime.getMinutes(),
-                  label: label,
+                  label: `Kabalikat: ${label}`,
                   vibrate: true,
                   skipUi: true
                 });
+                
+                if (!result.success) {
+                  throw new Error(result.message || 'Alarm creation failed');
+                }
+                
+                addLog(UrgencyTier.TIER1, 'ALARM SET', `Native alarm: ${label} at ${scheduleTime.toLocaleTimeString()}`);
              } catch (e) {
-                console.error("Native Alarm Failed", e);
-                // Fallback to Notification
+                console.error("Native Alarm Failed, using notification fallback", e);
+                // Fallback to high-priority notification that works when app killed
                 await LocalNotifications.schedule({
                    notifications: [{
-                       title: "⏰ " + label,
-                       body: "It's time for " + label,
-                       id: Math.floor(Math.random() * 10000),
+                       title: `🚨 ${label}`,
+                       body: "It's time!",
+                       id: Math.floor(Math.random() * 1000000),
                        schedule: { at: scheduleTime, allowWhileIdle: true },
                        channelId: 'critical_alerts',
-                       extra: { type: 'alarm', reason: label }
+                       extra: { type: 'alarm', reason: label },
+                       ongoing: true
                    }]
                 });
+                addLog(UrgencyTier.TIER1, 'ALARM SET', `Notification alarm: ${label} at ${scheduleTime.toLocaleTimeString()}`);
              }
           }
-          addLog(UrgencyTier.TIER1, 'ALARM SET', `${label} at ${scheduleTime.toLocaleTimeString()}`);
-          setMessages(prev => [...prev, { role: 'model', parts: [{ text: `⏰ Alarm set for ${scheduleTime.toLocaleTimeString()}` }], timestamp: new Date().toLocaleTimeString() }]);
+          
+          // Personal-feeling feedback
+          const hours = scheduleTime.getHours();
+          const ampm = hours >= 12 ? 'PM' : 'AM';
+          const h = hours % 12 || 12;
+          const m = scheduleTime.getMinutes().toString().padStart(2, '0');
+          const timeDisplay = `${h}:${m} ${ampm}`;
+          
+          setMessages(prev => [...prev, { 
+             role: 'model', 
+             parts: [{ text: `Got it. I'll wake you up at ${timeDisplay}. Rest easy.` }], 
+             timestamp: new Date().toLocaleTimeString() 
+          }]);
 
       } else if (call.name === 'manage_life_calendar') {
         const intent = cleanArgs.intent;
@@ -676,7 +877,7 @@ export default function App() {
             title: cleanArgs.title || 'Untitled',
             start_time: cleanArgs.start_time,
             end_time: cleanArgs.end_time,
-            category: (cleanArgs.category as EventCategory) || 'Other',
+            category: (cleanArgs.category as EventCategory) || 'Personal',
             source: cleanArgs.source || 'manual',
             recurrence: cleanArgs.recurrence
           };
@@ -955,6 +1156,108 @@ export default function App() {
   return (
     <div className={`mobile-frame flex flex-col h-screen overflow-hidden ${themeClasses.bg} ${themeClasses.text} transition-colors duration-300`}>
       
+      {/* INITIAL SETUP GATE */}
+      {!setupCompleted && (
+        <div className="fixed inset-0 z-[9999] bg-white text-slate-900 flex flex-col p-6 overflow-y-auto override-light" style={{ backgroundColor: '#ffffff', color: '#0f172a' }}>
+           <div className="flex-1 flex flex-col justify-start gap-4">
+              <div className="w-12 h-12 bg-indigo-600 rounded-3xl flex items-center justify-center mb-2 mt-4 shadow-lg shadow-indigo-200">
+                 <ShieldCheck className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-black tracking-tight mb-2 text-slate-900">Required Permissions</h1>
+                <p className="text-slate-500 font-bold text-sm">To act as your reliable Guardian, Kabalikat needs critical access to your device.</p>
+              </div>
+
+              <div className="space-y-3 pb-8">
+                 <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 shadow-sm">
+                    <div className="flex items-center gap-3 mb-2">
+                       <Bell className="w-5 h-5 text-indigo-600" />
+                       <h3 className="font-bold text-sm text-slate-900">Notifications</h3>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mb-3 font-medium">Required for Alarms, Reminders, and Background Sentry status.</p>
+                    <button 
+                      onClick={async () => {
+                         if (Capacitor.isNativePlatform()) {
+                            await LocalNotifications.requestPermissions();
+                         }
+                      }}
+                      className="w-full py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-xs active:scale-95 transition-transform shadow-md shadow-indigo-200"
+                    >
+                       Request Access
+                    </button>
+                 </div>
+
+                 <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 shadow-sm">
+                    <div className="flex items-center gap-3 mb-2">
+                       <Zap className="w-5 h-5 text-amber-500" />
+                       <h3 className="font-bold text-sm text-slate-900">Unrestricted Battery</h3>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mb-3 font-medium">CRITICAL: You MUST allow "Unrestricted" background usage, or the OS will kill the agent.</p>
+                    <div className="p-3 bg-white rounded-lg border border-slate-200 mb-3">
+                       <p className="text-[10px] text-slate-400 font-mono font-bold">
+                         Settings {'>'} Apps {'>'} Kabalikat {'>'} Battery {'>'} Unrestricted
+                       </p>
+                    </div>
+                    <button 
+                       className="w-full py-2.5 bg-slate-800 text-white rounded-xl font-bold text-xs shadow-md"
+                       onClick={() => {
+                          const pkg = 'com.kabalikat.agent';
+                          try {
+                             if(Capacitor.getPlatform() === 'android') {
+                                // Try direct battery optimization request
+                                window.location.href = `intent:package:${pkg}#Intent;action=android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS;end`;
+                             }
+                          } catch(e) { 
+                              // Fallback to App Info
+                             if(Capacitor.getPlatform() === 'android') {
+                                window.location.href = `intent:#Intent;action=android.settings.APPLICATION_DETAILS_SETTINGS;package=${pkg};end`;
+                             }
+                          }
+                       }}
+                    >
+                       Open Settings / Whitelist
+                    </button>
+                 </div>
+
+                 <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 shadow-sm">
+                    <div className="flex items-center gap-3 mb-2">
+                       <Camera className="w-5 h-5 text-indigo-600" />
+                       <h3 className="font-bold text-sm text-slate-900">Camera Access</h3>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mb-3 font-medium">Needed for OCR Vision and visual memory capture.</p>
+                    <button 
+                       className="w-full py-2.5 bg-white text-indigo-600 border-2 border-indigo-100 rounded-xl font-bold text-xs"
+                       onClick={async () => {
+                          try {
+                             await navigator.mediaDevices.getUserMedia({ video: true });
+                          } catch(e) { console.error(e); }
+                       }}
+                    >
+                       Grant Capability
+                    </button>
+                 </div>
+                 
+                 <div className="p-4 bg-red-50 rounded-2xl border border-red-100">
+                    <div className="flex items-center gap-3 mb-2">
+                       <CircleAlert className="w-5 h-5 text-red-500" />
+                       <h3 className="font-bold text-sm text-red-600">Important Note</h3>
+                    </div>
+                    <p className="text-[11px] text-red-400 leading-relaxed font-bold">
+                       Do not "Force Stop" the app from settings. If you need to close it, simply swipe it away. Force stopping kills all alarms and sentry modes immediately.
+                    </p>
+                 </div>
+              </div>
+           </div>
+
+           <button 
+             onClick={() => setSetupCompleted(true)}
+             className="w-full py-4 bg-indigo-600 text-white font-black uppercase tracking-widest rounded-2xl active:scale-95 transition-transform mb-4 shadow-xl shadow-indigo-200 text-sm"
+           >
+              I Have Enabled All
+           </button>
+        </div>
+      )}
+
       {/* Vision Overlay */}
       {showCamera && (
         <div className="absolute inset-0 z-[60] bg-black flex flex-col">
@@ -1640,9 +1943,9 @@ export default function App() {
 
             <button 
               onClick={() => {
-                localStorage.setItem('kabalikat_emails', JSON.stringify(emailAccounts));
-                localStorage.setItem('kabalikat_ai_keys', JSON.stringify(aiKeys));
-                localStorage.setItem('kabalikat_azure_ocr', JSON.stringify(azureOCR));
+                saveToon('kabalikat_emails.toon', emailAccounts);
+                saveToon('kabalikat_ai_keys.toon', aiKeys);
+                saveToon('kabalikat_azure_ocr.toon', azureOCR);
                 setIsVaultSaved(true);
                 setTimeout(() => setIsVaultSaved(false), 2000);
               }}

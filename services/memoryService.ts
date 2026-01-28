@@ -1,5 +1,6 @@
 // Memory Service using TOON for efficient context storage
 import { encode, decode } from '@toon-format/toon';
+import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 
 
 export interface RecurrentTask {
@@ -19,35 +20,54 @@ export interface UserMemory {
   };
   facts: string[]; // List of learned facts about the user
   recurring_tasks: RecurrentTask[]; // Recurring habits/todos
+  handled_recurrence_ids?: string[]; // IDs of recurrences already generated
   last_interaction?: string;
 }
 
 export class MemoryService {
   private memory: UserMemory;
-  private readonly STORAGE_KEY = 'kabalikat_memory_toon';
+  private readonly FILE_NAME = 'kabalikat_memory.toon';
+  private initialized = false;
 
   constructor() {
-    this.memory = this.load();
+    this.memory = { identity: { preferences: [] }, facts: [], recurring_tasks: [], handled_recurrence_ids: [] };
   }
 
-  private load(): UserMemory {
+  public async init() {
+    if (this.initialized) return;
+    this.memory = await this.load();
+    this.initialized = true;
+  }
+
+  private async load(): Promise<UserMemory> {
     try {
-      const raw = localStorage.getItem(this.STORAGE_KEY);
-      if (!raw) return { identity: { preferences: [] }, facts: [], recurring_tasks: [] };
+      // Try to read from filesystem
+      const result = await Filesystem.readFile({
+        path: this.FILE_NAME,
+        directory: Directory.Documents,
+        encoding: Encoding.UTF8,
+      });
+
+      const raw = typeof result.data === 'string' ? result.data : String(result.data);
+      if (!raw) return { identity: { preferences: [] }, facts: [], recurring_tasks: [], handled_recurrence_ids: [] };
       return decode(raw) as unknown as UserMemory;
     } catch (e) {
-      console.error("Failed to decode TOON memory, resetting.", e);
-      return { identity: { preferences: [] }, facts: [], recurring_tasks: [] };
+      console.log("No existing memory file found or error reading (created new).", e);
+      return { identity: { preferences: [] }, facts: [], recurring_tasks: [], handled_recurrence_ids: [] };
     }
-
   }
 
-  private save() {
+  private async save() {
     try {
       const encoded = encode(this.memory);
-      localStorage.setItem(this.STORAGE_KEY, encoded);
+      await Filesystem.writeFile({
+        path: this.FILE_NAME,
+        data: encoded,
+        directory: Directory.Documents,
+        encoding: Encoding.UTF8,
+      });
     } catch (e) {
-      console.error("Failed to encode TOON memory", e);
+      console.error("Failed to write memory to filesystem", e);
     }
   }
 
@@ -59,12 +79,6 @@ export class MemoryService {
   }
 
   public async learn(text: string) {
-    // Simple heuristic: if the text looks like a fact, add it.
-    // In a real agent, we might use an LLM to extract the fact first.
-    // For now, we append user inputs that strictly start with "I am" or "My name is" etc as facts
-    // OR we expose a method for the Agent to explicitly call "save_memory".
-    
-    // Check for obvious identity markers
     const lower = text.toLowerCase();
     if (lower.includes("my name is ")) {
        const name = text.split("is ")[1].split(" ")[0]; // Very naive extraction
@@ -82,21 +96,29 @@ export class MemoryService {
         });
     }
 
-    // We can also just store the raw fact if it's explicitly stated
-    // Ideally, the "Agent" tool use should determine what to save.
-    this.save();
+    await this.save();
   }
   
-  public addFact(fact: string) {
+  public async addFact(fact: string) {
     if (!this.memory.facts.includes(fact)) {
       this.memory.facts.push(fact);
-      this.save();
+      await this.save();
     }
   }
 
-  public addRecurringTask(task: RecurrentTask) {
+  public async addRecurringTask(task: RecurrentTask) {
       this.memory.recurring_tasks.push(task);
-      this.save();
+      await this.save();
+  }
+
+  public async markRecurrenceAsHandled(id: string) {
+    if (!this.memory.handled_recurrence_ids) {
+      this.memory.handled_recurrence_ids = [];
+    }
+    if (!this.memory.handled_recurrence_ids.includes(id)) {
+      this.memory.handled_recurrence_ids.push(id);
+      await this.save();
+    }
   }
 
   public getMemory(): UserMemory {
