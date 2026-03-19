@@ -75,5 +75,10 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </receiver>
+
+        <receiver
+            android:name=".AlarmTriggerReceiver"
+            android:enabled="true"
+            android:exported="false" />
     </application>
 </manifest>
