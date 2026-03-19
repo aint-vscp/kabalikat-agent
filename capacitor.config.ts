@@ -17,8 +17,9 @@ const config: CapacitorConfig = {
     LocalNotifications: {
       smallIcon: "ic_launcher",
       iconColor: "#4F46E5",
-      sound: "alarm.wav"
-      // Alarm channel importance 5 is enforced at runtime via NotificationService.setupNotificationChannels().
+      sound: "alarm_sound",
+      // Channel-level importance (1-5) is set at runtime in NotificationService.ts
+      // ALARM channel = 5 (heads-up), SENTRY channel = 2 (silent)
     }
   },
   android: {
