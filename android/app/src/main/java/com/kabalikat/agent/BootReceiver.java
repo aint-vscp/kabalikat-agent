@@ -25,14 +25,14 @@ public class BootReceiver extends BroadcastReceiver {
                              action.equals("com.kabalikat.agent.RESTART_SERVICE");
         
         if (shouldStart) {
-            Log.d(TAG, "Starting KabalikatService from BootReceiver");
+            Log.d(TAG, "Starting KabalikatForegroundService from BootReceiver");
             startKabalikatService(context);
         }
     }
 
     private void startKabalikatService(Context context) {
         try {
-            Intent serviceIntent = new Intent(context, KabalikatService.class);
+            Intent serviceIntent = new Intent(context, KabalikatForegroundService.class);
             serviceIntent.setPackage(context.getPackageName());
             
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -40,9 +40,9 @@ public class BootReceiver extends BroadcastReceiver {
             } else {
                 context.startService(serviceIntent);
             }
-            Log.d(TAG, "KabalikatService start requested");
+            Log.d(TAG, "KabalikatForegroundService start requested");
         } catch (Exception e) {
-            Log.e(TAG, "Failed to start KabalikatService", e);
+            Log.e(TAG, "Failed to start KabalikatForegroundService", e);
         }
     }
 }
