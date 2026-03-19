@@ -55,6 +55,7 @@ import { CapgoAlarm as Alarm } from '@capgo/capacitor-alarm';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { ClassroomService } from './services/classroomService';
 import { nativeBridgeService } from './services/nativeBridgeService';
+import { notificationService } from './services/NotificationService';
 import { encode, decode } from '@toon-format/toon';
 
 const emailService = new EmailService();
@@ -184,23 +185,8 @@ export default function App() {
             console.log('Exact alarm setting check failed:', e);
           }
 
-          // Create channels for different urgency
-          await LocalNotifications.createChannel({
-            id: 'critical_alerts',
-            name: 'Critical Alerts',
-            description: 'For Tier 1 Alarms',
-            importance: 5,
-            visibility: 1,
-            vibration: true
-          });
-          
-          await LocalNotifications.createChannel({
-             id: 'reminders',
-             name: 'Reminders',
-             description: 'General reminders',
-             importance: 3,
-             visibility: 1
-          });
+          // Why: Centralized channel setup guarantees schedule paths are consistent and reusable.
+          await notificationService.setupNotificationChannels();
 
           // Background Task Listener
           CapApp.addListener('appStateChange', async ({ isActive }) => {
@@ -447,48 +433,11 @@ export default function App() {
        }
     }
 
-    // 2. Local Notifications (Reminders leading up to event - works even when app killed)
-    const offsets = [
-        { label: '2 hours', ms: 2 * 60 * 60 * 1000 },
-        { label: '1 hour', ms: 1 * 60 * 60 * 1000 },
-        { label: '30 minutes', ms: 30 * 60 * 1000 },
-        { label: 'CRITICAL (5m)', ms: 5 * 60 * 1000 },
-        { label: 'NOW', ms: 0 }
-    ];
-
-    const notifications = [];
-
-    for (const offset of offsets) {
-        const triggerAt = eventTime - offset.ms;
-        if (triggerAt > now + 1000) {
-            const isCriticalNotification = offset.label.includes('CRITICAL') || offset.label === 'NOW';
-            notifications.push({
-                title: offset.label === 'NOW' ? `🚨 ${event.title} STARTED!` : `Reminder: ${event.title}`,
-                body: offset.label === 'NOW' ? "It's time!" : `Due in ${offset.label}.`,
-                id: Math.floor(Math.random() * 1000000),
-                schedule: { at: new Date(triggerAt), allowWhileIdle: true },
-                channelId: isCriticalNotification ? 'critical_alerts' : 'reminders',
-                extra: { eventId: event.id, type: offset.label === 'NOW' ? 'alarm' : 'reminder', reason: event.title },
-                ongoing: offset.label === 'NOW'
-            });
-
-            if (Capacitor.isNativePlatform() && isCriticalNotification) {
-              nativeBridgeService.scheduleCriticalAlarm({
-                triggerAtEpochMs: triggerAt,
-                title: offset.label === 'NOW' ? `${event.title} started` : `Reminder: ${event.title}`,
-                body: offset.label === 'NOW' ? "It's time now." : `Due in ${offset.label}.`,
-                eventId: `${event.id}_${offset.label.replace(/\s+/g, '_')}`
-              });
-            }
-        }
-    }
-
-    if (notifications.length > 0 && Capacitor.isNativePlatform()) {
-        try {
-           await LocalNotifications.schedule({ notifications });
-        } catch (e) {
-           console.error("Failed to schedule notifications", e);
-        }
+    // 2. Local Notifications (centralized in NotificationService)
+    try {
+      await notificationService.scheduleEventReminders(event);
+    } catch (e) {
+      console.error("Failed to schedule notifications", e);
     }
   }, [addLog]);
 
@@ -607,13 +556,9 @@ export default function App() {
             
             // Notify for new assignments
             if (Capacitor.isNativePlatform()) {
-               LocalNotifications.schedule({
-                 notifications: [{
-                   title: 'New Classwork Detected',
-                   body: `Added ${newEvents.length} new assignments to your calendar.`,
-                   id: Math.floor(Math.random() * 100000),
-                   schedule: { at: new Date(Date.now() + 1000) }
-                 }]
+               notificationService.scheduleImmediateNotification({
+                 title: 'New Classwork Detected',
+                 body: `Added ${newEvents.length} new assignments to your calendar.`
                });
             }
             
@@ -943,13 +888,11 @@ export default function App() {
             });
             
             if(Capacitor.isNativePlatform()) {
-                LocalNotifications.schedule({
-                    notifications: [{
-                        title: "CONFLICT DETECTED",
-                        body: `${cleanArgs.title} conflicts with ${conflict.title}`,
-                        id: Math.floor(Math.random() * 10000),
-                        schedule: { at: new Date(Date.now() + 1000) }
-                    }]
+              notificationService.scheduleImmediateNotification({
+                title: "CONFLICT DETECTED",
+                body: `${cleanArgs.title} conflicts with ${conflict.title}`,
+                channelId: 'critical_alerts',
+                extra: { type: 'alarm', reason: cleanArgs.title }
                 });
             }
             
