@@ -54,6 +54,7 @@ import { KeepAwake } from '@capacitor-community/keep-awake';
 import { CapgoAlarm as Alarm } from '@capgo/capacitor-alarm';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { ClassroomService } from './services/classroomService';
+import { nativeBridgeService } from './services/nativeBridgeService';
 import { encode, decode } from '@toon-format/toon';
 
 const emailService = new EmailService();
@@ -161,6 +162,8 @@ export default function App() {
 
       if (Capacitor.isNativePlatform()) {
         try {
+          await nativeBridgeService.startForegroundSentry();
+
           // Request alarm permissions first
           try {
             const alarmPermResult = await Alarm.requestPermissions({ exactAlarm: true });
@@ -458,15 +461,25 @@ export default function App() {
     for (const offset of offsets) {
         const triggerAt = eventTime - offset.ms;
         if (triggerAt > now + 1000) {
+            const isCriticalNotification = offset.label.includes('CRITICAL') || offset.label === 'NOW';
             notifications.push({
                 title: offset.label === 'NOW' ? `🚨 ${event.title} STARTED!` : `Reminder: ${event.title}`,
                 body: offset.label === 'NOW' ? "It's time!" : `Due in ${offset.label}.`,
                 id: Math.floor(Math.random() * 1000000),
                 schedule: { at: new Date(triggerAt), allowWhileIdle: true },
-                channelId: (offset.label.includes('CRITICAL') || offset.label === 'NOW') ? 'critical_alerts' : 'reminders',
+                channelId: isCriticalNotification ? 'critical_alerts' : 'reminders',
                 extra: { eventId: event.id, type: offset.label === 'NOW' ? 'alarm' : 'reminder', reason: event.title },
                 ongoing: offset.label === 'NOW'
             });
+
+            if (Capacitor.isNativePlatform() && isCriticalNotification) {
+              nativeBridgeService.scheduleCriticalAlarm({
+                triggerAtEpochMs: triggerAt,
+                title: offset.label === 'NOW' ? `${event.title} started` : `Reminder: ${event.title}`,
+                body: offset.label === 'NOW' ? "It's time now." : `Due in ${offset.label}.`,
+                eventId: `${event.id}_${offset.label.replace(/\s+/g, '_')}`
+              });
+            }
         }
     }
 
@@ -835,6 +848,13 @@ export default function App() {
                 if (!result.success) {
                   throw new Error(result.message || 'Alarm creation failed');
                 }
+
+                await nativeBridgeService.scheduleCriticalAlarm({
+                  triggerAtEpochMs: scheduleTime.getTime(),
+                  title: `Alarm: ${label}`,
+                  body: "Tap to open Kabalikat alarm mode.",
+                  eventId: `manual_${label}_${scheduleTime.getTime()}`
+                });
                 
                 addLog(UrgencyTier.TIER1, 'ALARM SET', `Native alarm: ${label} at ${scheduleTime.toLocaleTimeString()}`);
              } catch (e) {
@@ -851,6 +871,14 @@ export default function App() {
                        ongoing: true
                    }]
                 });
+
+                await nativeBridgeService.scheduleCriticalAlarm({
+                  triggerAtEpochMs: scheduleTime.getTime(),
+                  title: `Alarm: ${label}`,
+                  body: "Tap to open Kabalikat alarm mode.",
+                  eventId: `manual_${label}_${scheduleTime.getTime()}`
+                });
+
                 addLog(UrgencyTier.TIER1, 'ALARM SET', `Notification alarm: ${label} at ${scheduleTime.toLocaleTimeString()}`);
              }
           }
