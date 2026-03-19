@@ -17,7 +17,8 @@ const config: CapacitorConfig = {
     LocalNotifications: {
       smallIcon: "ic_launcher",
       iconColor: "#4F46E5",
-      sound: undefined
+      sound: "alarm.wav"
+      // Alarm channel importance 5 is enforced at runtime via NotificationService.setupNotificationChannels().
     }
   },
   android: {
