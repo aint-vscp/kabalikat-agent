@@ -8,6 +8,7 @@ import android.os.PowerManager;
 import android.provider.Settings;
 import android.util.Log;
 import com.getcapacitor.BridgeActivity;
+import com.kabalikat.agent.KabalikatBridgePlugin;
 
 public class MainActivity extends BridgeActivity {
     
@@ -16,6 +17,8 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        registerPlugin(KabalikatBridgePlugin.class);
         
         startKabalikatService();
         requestBatteryOptimizationExemption();
