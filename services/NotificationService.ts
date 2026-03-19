@@ -12,15 +12,15 @@ const CHANNEL_CRITICAL = 'critical_alerts';
 const CHANNEL_REMINDERS = 'reminders';
 
 const CRITICAL_IMPORTANCE: Importance = 5;
-const REMINDER_IMPORTANCE: Importance = 3;
+const REMINDER_IMPORTANCE: Importance = 2;
 const LOCKSCREEN_VISIBILITY: Visibility = 1;
 
 const REMINDER_OFFSETS = [
-  { label: '2 hours', ms: 2 * 60 * 60 * 1000 },
-  { label: '1 hour', ms: 1 * 60 * 60 * 1000 },
-  { label: '30 minutes', ms: 30 * 60 * 1000 },
-  { label: 'CRITICAL (5m)', ms: 5 * 60 * 1000 },
-  { label: 'NOW', ms: 0 },
+  { label: '2 hours', ms: 2 * 60 * 60 * 1000, mins: 120 },
+  { label: '1 hour', ms: 1 * 60 * 60 * 1000, mins: 60 },
+  { label: '30 minutes', ms: 30 * 60 * 1000, mins: 30 },
+  { label: 'CRITICAL (5m)', ms: 5 * 60 * 1000, mins: 5 },
+  { label: 'NOW', ms: 0, mins: 999 },
 ] as const;
 
 const isCriticalOffset = (label: string): boolean => label.includes('CRITICAL') || label === 'NOW';
@@ -91,6 +91,7 @@ export class NotificationService {
         title: offset.label === 'NOW' ? `🚨 ${event.title} STARTED!` : `Reminder: ${event.title}`,
         body: offset.label === 'NOW' ? "It's time!" : `Due in ${offset.label}.`,
         schedule: { at: new Date(triggerAt), allowWhileIdle: true },
+        fullScreenIntent: offset.mins <= 30,
         channelId: critical ? CHANNEL_CRITICAL : CHANNEL_REMINDERS,
         extra: {
           eventId: event.id,
@@ -99,7 +100,7 @@ export class NotificationService {
           offset: offset.label,
         },
         ongoing: offset.label === 'NOW',
-      });
+      } as LocalNotificationSchema);
 
       scheduledIds.push(id);
 
