@@ -1,0 +1,45 @@
+name: Block AI Co-Author Trailers
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine commit range
+        id: range
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "range=${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+          elif [ -n "${{ github.event.before }}" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            echo "range=${{ github.event.before }}..${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "range=${{ github.sha }}~1..${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Block AI co-author trailers
+        run: |
+          set -e
+          PATTERN='Co-authored-by:.*\(copilot\|github-copilot\|chatgpt\|claude\|anthropic\|openai\|cursor\|codex\|gpt-\|gemini\|bard\|devin\|sourcegraph\|cody\|tabnine\|sweep\|aider\|jetbrains-ai\|amazon q\|codewhisperer\)'
+          RANGE="${{ steps.range.outputs.range }}"
+          echo "Scanning commit range: $RANGE"
+          BAD=$(git log "$RANGE" --format='%H%n%B%n----' 2>/dev/null | grep -iE "$PATTERN" || true)
+          if [ -n "$BAD" ]; then
+            echo "::error::AI co-author trailer detected. This repository forbids AI tools as Co-authored-by."
+            echo "Offending lines:"
+            echo "$BAD"
+            exit 1
+          fi
+          echo "OK: no AI co-author trailers in this push."
